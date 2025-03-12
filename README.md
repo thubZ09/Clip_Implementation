@@ -1,6 +1,6 @@
 # CLIP Implementation 
 
-This repository comtains an implementation of a CLIP-like model that aligns image and text representations using PyTorch and Hugging Face Transformers. The model uses a Vision Transformer (ViT) as the image encoder and DistilRoBERTa as the text encoder. It is trained on the Flickr30k dataset.
+This repository implements a CLIP-like model that aligns image and text representations using PyTorch and Hugging Face Transformers. The model uses a Vision Transformer (ViT) as the image encoder and DistilRoBERTa as the text encoder. It is trained on the Flickr30k dataset.
 
 - Paper - https://arxiv.org/pdf/2103.00020
 
