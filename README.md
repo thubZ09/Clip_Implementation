@@ -4,18 +4,6 @@ This repository implements a CLIP-like model that aligns image and text represen
 
 - Paper - https://arxiv.org/pdf/2103.00020
 
-## 📌Table of Contents
-
-- [Overview](#overview)
-- [Working](#working)
-- [Project Structure](#project-structure)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Data Setup](#data-setup)
-- [Inference](#inference)
-- [Notes](#notes)
-
-
 ## 📌Overview
 
 This project demonstrates how to implement a CLIP-like architecture locally using your preferred IDE. The model is designed to learn joint representations for images and their corresponding captions, which can then be used for tasks such as image retrieval, caption generation, and cross-modal matching.
