@@ -1,56 +1,59 @@
-
 import torch
-import torch.nn.functional as F
-from torch.optim import AdamW 
-from torch.amp.grad_scaler import GradScaler
-from torch.amp.autocast_mode import autocast
-from torch.optim.lr_scheduler import LambdaLR
-from configs import LocalConfig
-from model import LocalCLIP
-from data_utils import get_dataloader
+from torch.utils.data import DataLoader, random_split
+from dataset import CLIPDataset
+from model import CLIP
+from engine import train_epoch, validate
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+import pandas as pd
+import os
 
-def train():
-    cfg = LocalConfig()
-    model = LocalCLIP().to(cfg.DEVICE)
-    optimizer = AdamW(model.parameters(), lr=cfg.LR)
-    scaler = GradScaler(enabled=cfg.FP16)
-    
-    # Update these paths based on your local dataset location:
-    csv_path = "./data/flickr-image-dataset/results.csv"
-    img_dir = "./data/flickr-image-dataset"
-    train_loader = get_dataloader(csv_path, img_dir, cfg.BATCH_SIZE)
-    
-    scheduler = LambdaLR(optimizer, lr_lambda=lambda step: min(step / cfg.WARMUP, 1.0))
-    
-   
-    device_type = "cuda" if cfg.DEVICE == "cuda" else "cpu"
-    
-    for epoch in range(cfg.EPOCHS):
-        model.train()
-        for i, batch in enumerate(train_loader):
-            batch = {k: v.to(cfg.DEVICE) for k, v in batch.items()}
-            
-            with autocast(enabled=cfg.FP16, device_type=device_type):
-                img_emb, txt_emb, scale = model(batch)
-                logits = scale * img_emb @ txt_emb.t()
-                targets = torch.arange(len(logits), device=cfg.DEVICE)
-                loss = (F.cross_entropy(logits, targets) + F.cross_entropy(logits.t(), targets)) / 2
-            
-            scaler.scale(loss).backward()
-            
-            if (i+1) % cfg.GRAD_ACCUM == 0:
-                scaler.step(optimizer)
-                scaler.update()
-                optimizer.zero_grad()
-                scheduler.step()
-            
-            if i % 50 == 0:
-                print(f"Epoch: {epoch+1}/{cfg.EPOCHS} | Step: {i} | Loss: {loss.item():.4f}")
-                
-            if i % 200 == 0 and cfg.SAVE_PATH:
-                checkpoint_path = f"{cfg.SAVE_PATH}clip_epoch{epoch}_step{i}.pt"
-                torch.save(model.state_dict(), checkpoint_path)
-                print(f"Checkpoint saved to {checkpoint_path}")
+#config
+device = "cuda" if torch.cuda.is_available() else "cpu"
+batch_size = 64
+projection_dim = 256
+lr = 5e-5
+epochs = 30
 
-if __name__ == "__main__":
-    train()
+def prepare_datasets():
+    captions = pd.read_csv('captions.csv')  
+    
+    full_dataset = CLIPDataset(
+        dataframe=captions,
+        image_dir='images',
+        transform=A.Compose([
+            A.Resize(224, 224),
+            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ToTensorV2()
+        ]),
+        max_length=77
+    )
+    
+    train_size = int(0.9 * len(full_dataset))
+    val_size = len(full_dataset) - train_size
+    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
+    
+    return train_dataset, val_dataset
+
+#dataloaders
+train_dataset, val_dataset = prepare_datasets()
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+
+model = CLIP(projection_dim=projection_dim).to(device)
+
+optimizer = torch.optim.AdamW(
+    model.parameters(),
+    lr=lr,
+    weight_decay=0.01
+)
+
+for epoch in range(epochs):
+    train_loss = train_epoch(model, train_loader, optimizer, device)
+    val_loss = validate(model, val_loader, device)
+    
+    print(f"Epoch {epoch+1}/{epochs}")
+    print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+    print("-" * 50)
+
+torch.save(model.state_dict(), "clip_model.pth")
